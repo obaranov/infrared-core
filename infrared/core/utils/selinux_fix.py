@@ -47,5 +47,4 @@ def copy_system_selinux(force=True):
 
 if __name__ == '__main__':
     copy_system_selinux()
-    import selinux  # noqa
 

@@ -10,8 +10,8 @@ import os
 import re
 import sys
 import ConfigParser
-import yaml
 from copy import deepcopy
+from abc import abstractmethod
 
 from infrared.core.utils import logger, utils, exceptions
 
@@ -317,13 +317,15 @@ class ComplexType(object):
         self.app_subfolder = app_subfolder
         self.settings_dirs = settings_dirs
 
+    @abstractmethod
     def resolve(self, value):
         """
         Resolves the value of the complex type.
         :return: the resulting complex type value.
         """
-        raise NotImplemented()
+        pass
 
+    @abstractmethod
     def get_allowed_values(self):
         """
         Gets the list of possible values for the complex type.
@@ -360,6 +362,13 @@ class Value(ComplexType):
         """
         return value
 
+    def get_allowed_values(self):
+        """
+        get_allowed_value implement abstract base interface.
+        :return:
+        """
+        pass
+
 
 class AdditionalOptionsType(ComplexType):
     """
@@ -386,6 +395,13 @@ class AdditionalOptionsType(ComplexType):
                 res.append("--" + argument)
 
         return res
+
+    def get_allowed_values(self):
+        """
+        get_allowed_values implementing abstract base interface.
+        :return:
+        """
+        pass
 
 
 class YamlFile(ComplexType):
@@ -523,6 +539,13 @@ class Topology(ComplexType):
             topology_dict[node_type]['amount'] = int(number)
 
         return topology_dict
+
+    def get_allowed_values(self):
+        """
+        get_allowed_values implementing abstract base interface.
+        :return:
+        """
+        pass
 
 
 # register custom actions
