@@ -1,10 +1,10 @@
 # provides AP Ito run plugins
-import argparse
 import logging
 import multiprocessing
+
 import os
 import yaml
-
+from abc import abstractmethod
 from infrared import SHARED_GROUPS
 from infrared.core.inspector.inspector import SpecParser
 from infrared.core.settings import SettingsManager
@@ -25,6 +25,7 @@ class SpecObject(object):
     def get_name(self):
         return self.name
 
+    @abstractmethod
     def extend_cli(self, root_subparsers):
         """
         Adds the spec cli options to to the main entry point.
@@ -32,6 +33,7 @@ class SpecObject(object):
         """
         pass
 
+    @abstractmethod
     def spec_handler(self, parser, args):
         """
         The main method for the spec.
@@ -136,7 +138,8 @@ class DefaultInfraredPluginSpec(SpecObject):
                                  settings=settings,
                                  inventory=inventory)
 
-    def __expand_path(self, path):
+    @staticmethod
+    def __expand_path(path):
         """
         Returns the absolute path or None
         """
@@ -144,27 +147,3 @@ class DefaultInfraredPluginSpec(SpecObject):
         if path:
             res = os.path.abspath(path)
         return res
-
-
-class SpecManager(object):
-    """
-    Manages all the available specifications (specs).
-    """
-
-    def __init__(self):
-        # create entry point
-        self.parser = argparse.ArgumentParser(
-            description='Infrared entry point')
-        self.root_subparsers = self.parser.add_subparsers(dest="subcommand")
-        self.spec_objects = {}
-
-    def register_spec(self, spec_object):
-        spec_object.extend_cli(self.root_subparsers)
-        self.spec_objects[spec_object.get_name()] = spec_object
-
-    def run_specs(self):
-        args = vars(self.parser.parse_args())
-        subcommand = args.get('subcommand', '')
-
-        if subcommand in self.spec_objects:
-            self.spec_objects[subcommand].spec_handler(self.parser, args)

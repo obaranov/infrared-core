@@ -1,3 +1,5 @@
+import argparse
+
 import os
 import sys
 import shutil
@@ -7,16 +9,52 @@ import pip
 from infrared.core.utils import logger
 from infrared.core.plugins import PluginsInspector
 from infrared import api
+
 PLUGIN_SETTINGS = 'plugins/settings.yml'
 
 LOG = logger.LOG
 
 
-class PluginManagerSpec(api.SpecObject):
+class SpecManager(object):
+    """
+    Manages all the available specifications (specs).
+    """
 
+    def __init__(self):
+        # create entry point
+        self.parser = argparse.ArgumentParser(prog="Infrared 2.0v")
+        self.group = self.parser.add_mutually_exclusive_group()
+        self.group.add_argument('-p', '--plugin_install', metavar="plugin name", dest='init',
+                                help='Install given core plugin.')
+        self.group.add_argument('-a', '--plugin_install_all', metavar="",
+                                help='Install all core plugins.')
+        self.group.add_argument('-l', '--list', metavar="",
+                                help='List all the available plugins.')
+        self.group.add_argument('-r', '--remove_plugin', metavar="plugin name", dest="remove",
+                                help="Uninstall given plugin.")
+        if len(sys.argv) == 1:
+            self.parser.print_help()
+            sys.exit(1)
+        self.root_subparsers = self.parser.add_subparsers(dest="subcommand")
+        self.spec_objects = {}
+
+    def register_spec(self, spec_object):
+        spec_object.extend_cli(self.root_subparsers)
+        self.spec_objects[spec_object.get_name()] = spec_object
+
+    def run_specs(self):
+        args = vars(self.parser.parse_args())
+        subcommand = args.get('subcommand', '')
+
+        if subcommand in self.spec_objects:
+            self.spec_objects[subcommand].spec_handler(self.parser, args)
+
+
+class PluginManagerSpec(api.SpecObject):
     def extend_cli(self, root_subparsers):
         parser_plugin = root_subparsers.add_parser(self.name, **self.kwargs)
-        plugins_subparsers = parser_plugin.add_subparsers(dest="command0")
+        plugins_subparsers = parser_plugin.add_subparsers(dest="command0",
+                                                          help="List of actions for plugin manager.")
 
         # list command
         plugins_subparsers.add_parser(
@@ -51,7 +89,8 @@ class PluginManagerSpec(api.SpecObject):
         elif command0 == 'remove':
             self._deinit_plugin(args['name'])
 
-    def _list_plugins(self):
+    @staticmethod
+    def _list_plugins():
         """
         Actually this will list all the modules and check if we have repo cloned.
         :return:
@@ -70,7 +109,8 @@ class PluginManagerSpec(api.SpecObject):
             submodule.update(init=True, force=True)
             self._install_requirements(submodule)
 
-    def _install_requirements(self, submodule):
+    @staticmethod
+    def _install_requirements(submodule):
         # iter_plugins will go through all the plugins subfolders and check what we have there.
         for plugin in PluginsInspector.iter_plugins():
             if os.path.abspath(plugin.root_dir) == os.path.abspath(submodule.path):
@@ -81,7 +121,8 @@ class PluginManagerSpec(api.SpecObject):
                     pip.main(args=pip_args)
                 break
 
-    def _deinit_plugin(self, name):
+    @staticmethod
+    def _deinit_plugin(name):
         root_repo = git.Repo(os.getcwd())
         for submodule in root_repo.submodules:
             if submodule.name == name:
@@ -106,15 +147,18 @@ class PluginManagerSpec(api.SpecObject):
 
 
 def main():
-    specs_manager = api.SpecManager()
-    specs_manager.register_spec(PluginManagerSpec(
-        'plugin', help="Plugin management command"))
-
+    specs_manager = SpecManager()
+    if sys.argv[0] == 1:
+        specs_manager.parser.print_help()
+    specs_manager.register_spec(PluginManagerSpec("plugin-manager",
+                                                  help="Plugin manager is responsible for a"
+                                                       "host of actions."))
     # add all the plugins
     for plugin in PluginsInspector.iter_plugins():
         specs_manager.register_spec(api.DefaultInfraredPluginSpec(plugin))
 
     specs_manager.run_specs()
+
 
 if __name__ == '__main__':
     sys.exit(int(main() or 0))
