@@ -1,11 +1,10 @@
 import argparse
-
 import os
 import sys
 import shutil
-
 import git
 import pip
+
 from infrared.core.plugins import PluginsInspector
 from infrared import api
 
@@ -40,7 +39,7 @@ class PluginManagerSpec(api.SpecObject):
     def extend_cli(self, root_subparsers):
         parser_plugin = root_subparsers.add_parser(self.name, **self.kwargs)
         plugins_subparsers = parser_plugin.add_subparsers(dest="command0",
-                                                          help="List of actions for plugin manager.")
+                                                          help="Actions for plugin manager.")
         # list command
         plugins_subparsers.add_parser(
             'list', help='List all the available plugins')
