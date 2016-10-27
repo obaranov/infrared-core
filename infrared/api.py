@@ -10,6 +10,8 @@ from infrared.core.inspector.inspector import SpecParser
 from infrared.core.settings import SettingsManager
 from infrared.core.utils import logger
 
+LOG = logger.LOG
+
 
 class SpecObject(object):
     """
@@ -55,6 +57,7 @@ class DefaultInfraredPluginSpec(SpecObject):
         user_dict = {}
         if self.add_base_groups:
             user_dict = dict(
+                description=self.plugin.description,
                 shared_groups=SHARED_GROUPS)
         self.specification = SpecParser.from_folder(
             self.plugin.settings_folders(),
@@ -95,6 +98,18 @@ class DefaultInfraredPluginSpec(SpecObject):
             else:
                 playbook = self.plugin.main_playbook
 
+            inventory = control_args.get('inventory', 'local_hosts')
+
+            # try to find file within the plugin folder
+            # TODO(obaranov) probably this is not a good idea.
+            # but it simplifies
+            if not os.path.isfile(inventory):
+                plugin_rel_invnetory = os.path.join(self.plugin.root_dir, inventory)
+                if os.path.isfile(plugin_rel_invnetory):
+                    inventory = plugin_rel_invnetory
+                    LOG.warn("Using inventory file from the plugin folder: %s", inventory)
+            inventory = self.__expand_path(inventory)
+
             proc = multiprocessing.Process(
                 target=self._ansible_worker,
                 args=(self.plugin.root_dir, playbook,),
@@ -102,10 +117,13 @@ class DefaultInfraredPluginSpec(SpecObject):
                     module_path=self.plugin.modules_dir,
                     verbose=control_args.get('verbose', None),
                     settings=playbook_settings,
-                    inventory=control_args.get('inventory', None)
+                    inventory=inventory
                 ))
             proc.start()
             proc.join()
+            if proc.exitcode:
+                # soemthing wrong happened in child process.
+                exit(proc.exitcode)
 
     @staticmethod
     def _ansible_worker(root_dir, playbook,
@@ -120,6 +138,15 @@ class DefaultInfraredPluginSpec(SpecObject):
                                  verbose=verbose,
                                  settings=settings,
                                  inventory=inventory)
+
+    def __expand_path(self, path):
+        """
+        Returns the absolute path or None
+        """
+        res = None
+        if path:
+            res = os.path.abspath(path)
+        return res
 
 
 class SpecManager(object):

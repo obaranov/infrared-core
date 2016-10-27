@@ -1,5 +1,6 @@
 import os
 import sys
+import shutil
 
 import git
 import pip
@@ -28,6 +29,11 @@ class PluginManagerSpec(api.SpecObject):
         plugins_subparsers.add_parser(
             'init-all', help='Initializes all the core plugin')
 
+        # remove plugin
+        deinit_parser = plugins_subparsers.add_parser(
+            'remove', help='Removes (de-initializes) a core plugin')
+        deinit_parser.add_argument("name", help="Plugin name")
+
     def spec_handler(self, parser, args):
         """
         Handles all the plugin manager commands
@@ -42,47 +48,61 @@ class PluginManagerSpec(api.SpecObject):
             self._init_plugin(args['name'])
         elif command0 == 'init-all':
             self._init_all_plugins()
+        elif command0 == 'remove':
+            self._deinit_plugin(args['name'])
 
     def _list_plugins(self):
+        """
+        Actually this will list all the modules and check if we have repo cloned.
+        :return:
+        """
+        root_repo = git.Repo(os.getcwd())
         print("Available plugins:")
-        for plugin in PluginsInspector.iter_plugins():
-            print('\t {name}: {path}'.format(
-                name=plugin.name, path=plugin.root_dir))
+        for submodule in root_repo.submodules:
+            #  trying to get repo
+            status = 'initialized' if submodule.module_exists() else 'not initialized'
+            print('\t [{status}] {name}'.format(name=submodule.name, status=status))
 
     def _init_all_plugins(self):
         root_repo = git.Repo(os.getcwd())
-
         for submodule in root_repo.submodules:
             print("Initializing plugin submodule: '{}'...".format(submodule.name))
-            submodule.update(init=True)
+            submodule.update(init=True, force=True)
+            self._install_requirements(submodule)
 
-        # install all the requirements
+    def _install_requirements(self, submodule):
+        # iter_plugins will go through all the plugins subfolders and check what we have there.
         for plugin in PluginsInspector.iter_plugins():
-            requirement_file = os.path.join(plugin.root_dir, "plugin_requirements.txt")
-            if os.path.isfile(requirement_file):
-                print("Installing requirements from: {}".format(requirement_file))
-                pip_args = ['install', '-r', requirement_file]
-                pip.main(args=pip_args)
+            if os.path.abspath(plugin.root_dir) == os.path.abspath(submodule.path):
+                requirement_file = os.path.join(plugin.root_dir, "plugin_requirements.txt")
+                if os.path.isfile(requirement_file):
+                    print("Installing requirements from: {}".format(requirement_file))
+                    pip_args = ['install', '-r', requirement_file]
+                    pip.main(args=pip_args)
+                break
 
-    def __install_requirements(self, plugin):
-        pass
+    def _deinit_plugin(self, name):
+        root_repo = git.Repo(os.getcwd())
+        for submodule in root_repo.submodules:
+            if submodule.name == name:
+                git.Git(os.getcwd()).execute(['git', 'submodule', 'deinit', '-f', submodule.path])
+                # need also remove .git/modules/<module_path> folder..
+                git_mod_path = os.path.join(os.getcwd(), '.git', 'modules', submodule.name)
+                if os.path.exists(git_mod_path):
+                    shutil.rmtree(git_mod_path)
+                print("Submodule '{}' has been de-initialized".format(submodule.name))
+                break
 
     def _init_plugin(self, name):
-        plugin = PluginsInspector.get_plugin(name)
-        if plugin is None:
-            LOG.warn("Unable to find plugin: %s", name)
-            sys.exit(1)
         root_repo = git.Repo(os.getcwd())
-
         for submodule in root_repo.submodules:
-            if os.path.abspath(submodule.path) == os.path.abspath(
-                    plugin.root_dir):
-                print("Updating plugin submodule: '{}'...".format(
-                    submodule.name))
-                submodule.update(init=True)
+            if submodule.name == name:
+                print("Initializing plugin submodule: '{}'...".format(submodule.name))
+                submodule.update(init=True, force=True)
+                self._install_requirements(submodule)
                 break
         else:
-            LOG.warn("No submodule found for plugin: %s", name)
+            print("Plugin '{}' was not found in submodules.".format(name))
 
 
 def main():
